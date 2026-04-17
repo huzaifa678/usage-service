@@ -1,0 +1,11 @@
+{"timestamp":"2026-04-15T09:38:29.541644Z","level":"info","event":"DAG bundles loaded: dags-folder, example_dags","logger":"airflow.dag_processing.bundles.manager.DagBundlesManager","filename":"manager.py","lineno":179}
+{"timestamp":"2026-04-15T09:38:29.547968Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/usage_kafka_ingestion_dag.py","logger":"airflow.models.dagbag.BundleDagBag","filename":"dagbag.py","lineno":593}
+{"timestamp":"2026-04-15T09:38:30.529573Z","level":"info","event":"Task instance is in running state","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:30.530612Z","level":"info","event":" Previous state of the Task instance: TaskInstanceState.QUEUED","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:30.530884Z","level":"info","event":"Current task name:consume_kafka_batch","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:30.530977Z","level":"info","event":"Dag name:usage_kafka_ingestion","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:31.645720Z","level":"info","event":"Processed 0 messages","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:34.156890Z","level":"info","event":"Done. Returned value was: None","logger":"airflow.task.operators.airflow.providers.standard.operators.python.PythonOperator","filename":"python.py","lineno":230}
+{"timestamp":"2026-04-15T09:38:34.275623Z","level":"info","event":"Task instance in success state","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:34.275821Z","level":"info","event":" Previous state of the Task instance: TaskInstanceState.RUNNING","logger":"task.stdout"}
+{"timestamp":"2026-04-15T09:38:34.278207Z","level":"info","event":"Task operator:<Task(PythonOperator): consume_kafka_batch>","logger":"task.stdout"}

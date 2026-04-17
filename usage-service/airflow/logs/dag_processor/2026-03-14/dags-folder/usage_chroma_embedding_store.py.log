@@ -1,0 +1,3 @@
+{"timestamp":"2026-03-14T11:17:47.886571Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/usage_chroma_embedding_store.py","logger":"airflow.models.dagbag.BundleDagBag","filename":"dagbag.py","lineno":593}
+{"timestamp":"2026-03-14T11:18:18.934433Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/usage_chroma_embedding_store.py","logger":"airflow.models.dagbag.BundleDagBag","filename":"dagbag.py","lineno":593}
+{"timestamp":"2026-03-14T11:18:51.120220Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/usage_chroma_embedding_store.py","logger":"airflow.models.dagbag.BundleDagBag","filename":"dagbag.py","lineno":593}

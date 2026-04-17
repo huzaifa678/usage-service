@@ -1,0 +1,1 @@
+{"timestamp":"2026-03-30T18:08:41.284438Z","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/usage_kafka_ingestion_dag.py","logger":"airflow.models.dagbag.BundleDagBag","filename":"dagbag.py","lineno":593}

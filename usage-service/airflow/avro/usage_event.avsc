@@ -1,0 +1,48 @@
+{
+  "type": "record",
+  "name": "UsageChargeCreated",
+  "namespace": "com.project.billing_service.avro",
+  "fields": [
+    {
+      "name": "usageChargeId",
+      "type": { "type": "string", "logicalType": "uuid" }
+    },
+    {
+      "name": "invoiceId",
+      "type": { "type": "string", "logicalType": "uuid" }
+    },
+    {
+      "name": "metric",
+      "type": "string"
+    },
+    {
+      "name": "quantity",
+      "type": "long"
+    },
+    {
+      "name": "unitPrice",
+      "type": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 10,
+        "scale": 2
+      }
+    },
+    {
+      "name": "totalPrice",
+      "type": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 10,
+        "scale": 2
+      }
+    },
+    {
+      "name": "createdAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    }
+  ]
+}
