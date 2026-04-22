@@ -11,7 +11,7 @@ from models.usage_event import UsageEvent
 
 load_dotenv()
 
-def decimal_deserializer(obj, ctx):
+def decimal_deserializer(obj):
     if isinstance(obj, bytes):
         unscaled = int.from_bytes(obj, byteorder='big', signed=True)
         return Decimal(unscaled) / (10 ** 2)
