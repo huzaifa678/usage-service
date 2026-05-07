@@ -1,0 +1,60 @@
+name: usage-service CD
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [usage-service/**]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Get ECR URL
+        id: ecr
+        run: |
+          ECR_URL=$(aws ecr describe-repositories --repository-names usage-service \
+            --query 'repositories[0].repositoryUri' --output text)
+          echo "url=$ECR_URL" >> $GITHUB_OUTPUT
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Retag sha → prod
+        run: |
+          MANIFEST=$(aws ecr batch-get-image --repository-name usage-service \
+            --image-ids imageTag=sha-${{ github.sha }} \
+            --query 'images[0].imageManifest' --output text)
+          aws ecr put-image --repository-name usage-service \
+            --image-tag prod --image-manifest "$MANIFEST"
+
+      - name: Update ArgoCD values-prod.yaml
+        env:
+          ARGOCD_REPO_TOKEN: ${{ secrets.ARGOCD_REPO_TOKEN }}
+        run: |
+          git clone https://x-access-token:${ARGOCD_REPO_TOKEN}@github.com/huzaifa678/SAAS-Continious-Delivery.git /tmp/cd
+          cd /tmp/cd
+
+          wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          chmod +x /usr/local/bin/yq
+
+          yq -i '.image.repository = "${{ steps.ecr.outputs.url }}"' charts/usage-service/values-prod.yaml
+          yq -i '.image.tag = "prod"' charts/usage-service/values-prod.yaml
+
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add charts/usage-service/values-prod.yaml
+          git commit -m "cd(usage-service): promote sha-${{ github.sha }} to prod"
+          git push
