@@ -5,7 +5,7 @@ uvicorn[standard]==0.31.1
 
 # Kafka consumer
 confluent-kafka==2.6.0
-fastavro==1.9.7
+fastavro==1.12.2
 
 # DB migrations
 alembic==1.13.3
