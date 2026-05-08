@@ -1,4 +1,4 @@
-confluent-kafka==2.6.0
+confluent-kafka==2.14.0
 fastavro==1.12.2
 
 apache-airflow==2.10.2
