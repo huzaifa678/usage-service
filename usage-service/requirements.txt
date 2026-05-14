@@ -8,7 +8,7 @@ confluent-kafka==2.6.0
 fastavro==1.12.2
 
 # DB migrations
-alembic==1.13.3
+alembic==1.18.4
 psycopg2-binary==2.9.10
 
 # Data processing / MLOps
