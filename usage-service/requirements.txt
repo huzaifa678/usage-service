@@ -28,7 +28,7 @@ sentence-transformers==5.5.0
 
 # Utilities & Resilience
 python-dotenv==1.0.1
-requests==2.32.3
+requests==2.34.2
 pybreaker==1.4.1
 tenacity==9.1.4
 
