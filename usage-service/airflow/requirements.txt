@@ -1,7 +1,7 @@
 confluent-kafka==2.14.0
 fastavro==1.12.2
 
-apache-airflow==3.2.1
+apache-airflow==3.2.2
 apache-airflow-providers-standard==1.13.1
 
 python-dotenv==1.2.2
