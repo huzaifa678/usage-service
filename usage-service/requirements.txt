@@ -27,7 +27,7 @@ langchain-openai==0.2.3
 sentence-transformers==5.5.1
 
 # Utilities & Resilience
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 requests==2.34.2
 pybreaker==1.4.1
 tenacity==9.1.4
