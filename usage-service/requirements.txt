@@ -38,5 +38,5 @@ opentelemetry-sdk==1.42.1
 opentelemetry-exporter-otlp==1.41.1
 opentelemetry-instrumentation-fastapi==0.63b1
 opentelemetry-instrumentation-requests==0.63b1
-opentelemetry-instrumentation-sqlalchemy==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.64b0
 opentelemetry-instrumentation-logging==0.63b1
