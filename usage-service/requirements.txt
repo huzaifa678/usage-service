@@ -14,7 +14,7 @@ psycopg2-binary==2.9.12
 # Data processing / MLOps
 pandas==3.0.5
 apache-airflow==3.3.0
-apache-airflow-providers-standard==1.15.0
+apache-airflow-providers-standard==1.16.0
 mlflow==3.14.0
 
 # LLM / RAG 
