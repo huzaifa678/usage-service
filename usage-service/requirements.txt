@@ -39,4 +39,4 @@ opentelemetry-exporter-otlp==1.44.0
 opentelemetry-instrumentation-fastapi==0.65b0
 opentelemetry-instrumentation-requests==0.65b0
 opentelemetry-instrumentation-sqlalchemy==0.65b0
-opentelemetry-instrumentation-logging==0.64b0
+opentelemetry-instrumentation-logging==0.65b0
