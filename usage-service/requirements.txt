@@ -1,6 +1,6 @@
 # Web/API
 # Bumped to 0.128.6 to satisfy Cadwyn 6.2.0
-fastapi==0.139.1
+fastapi==0.141.1
 uvicorn[standard]==0.52.1
 
 # Kafka consumer
