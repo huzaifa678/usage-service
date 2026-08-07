@@ -18,4 +18,4 @@ langchain-community==0.4.2
 langchain-openai==1.4.1
 langchain-postgres==0.0.14
 pgvector==0.3.6
-openai==2.52.0
+openai==2.53.0
