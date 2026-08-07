@@ -1,9 +1,9 @@
 from datetime import datetime
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.sensors.external_task import ExternalTaskSensor
-from embed.chroma_store import process_embeddings
-
+from etl.embed import process_embeddings
 
 with DAG(
     dag_id="usage_rag_embedding",
@@ -12,7 +12,6 @@ with DAG(
     catchup=False,
     max_active_runs=1,
 ) as dag:
-
     wait_for_aggregation = ExternalTaskSensor(
         task_id="wait_for_usage_aggregation",
         external_dag_id="usage_aggregation",
