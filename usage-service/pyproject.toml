@@ -1,0 +1,16 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = "venv|airflow/logs"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = ["venv", "airflow/logs", "migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"usage_common/models/__init__.py" = ["E402"]
