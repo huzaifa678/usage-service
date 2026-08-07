@@ -1,9 +1,11 @@
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
+
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
-from alembic import context
-from models import Base
+
+from usage_common.models import Base
 
 load_dotenv()
 
@@ -11,7 +13,7 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-    
+
 
 target_metadata = Base.metadata
 
@@ -21,7 +23,9 @@ db_host = os.getenv("POSTGRES_HOST")
 db_port = os.getenv("POSTGRES_PORT")
 db_name = os.getenv("POSTGRES_DB")
 
-DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+DATABASE_URL = (
+    f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+)
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
@@ -49,9 +53,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
