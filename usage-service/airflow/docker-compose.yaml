@@ -81,11 +81,9 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ${AIRFLOW_PROJ_DIR:-.}/consumer:/opt/airflow/consumer
-    - ${AIRFLOW_PROJ_DIR:-.}/aggregation:/opt/airflow/aggregation
-    - ${AIRFLOW_PROJ_DIR:-.}/embed:/opt/airflow/embed
     - ${AIRFLOW_PROJ_DIR:-.}/avro:/opt/airflow/avro
-    - ${AIRFLOW_PROJ_DIR:-.}/models:/opt/airflow/models
+    - ${AIRFLOW_PROJ_DIR:-.}/../usage_common:/opt/airflow/usage_common
+    - ${AIRFLOW_PROJ_DIR:-.}/../etl:/opt/airflow/etl
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

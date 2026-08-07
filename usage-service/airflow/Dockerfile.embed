@@ -4,12 +4,12 @@ RUN apt-get update && apt-get install -y gcc git && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY embed/ embed/
-COPY models/ models/
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY usage_common/ usage_common/
+COPY etl/ etl/
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "embed/chroma_store.py"]
+CMD ["python", "-c", "from etl.embed import process_embeddings; process_embeddings()"]

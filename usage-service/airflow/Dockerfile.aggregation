@@ -1,16 +1,15 @@
 FROM python:3.11-slim
 
-# System dependencies
 RUN apt-get update && apt-get install -y gcc && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY aggregation/ aggregation/
-COPY models/ models/
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY usage_common/ usage_common/
+COPY etl/ etl/
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "aggregation/usage_aggregate.py"]
+CMD ["python", "-c", "from etl.aggregate import aggregate_usage_events; aggregate_usage_events()"]
