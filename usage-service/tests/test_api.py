@@ -23,6 +23,13 @@ def test_health_returns_ok():
     assert response.json() == {"status": "ok"}
 
 
+@pytest.mark.parametrize("path", ["/healthz/live", "/healthz/ready"])
+def test_healthz_probes_return_ok(path):
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_aggregates_serializes_rows(monkeypatch):
     row = SimpleNamespace(
         customer_id="11111111-1111-1111-1111-111111111111",

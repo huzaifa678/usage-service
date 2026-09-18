@@ -81,6 +81,16 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/healthz/live")
+def healthz_live() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/healthz/ready")
+def healthz_ready() -> dict:
+    return {"status": "ok"}
+
+
 @app.get("/usage/aggregates", response_model=list[AggregateResponse])
 def get_aggregates(
     customer_id: Optional[str] = Query(default=None),
