@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   analyze:
-    name: CodeQL analyze (java-kotlin)
+    name: CodeQL analyze (python)
     runs-on: ubuntu-latest
     permissions:
       security-events: write   # upload SARIF to the Security tab
@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: java-kotlin
+          - language: python
             build-mode: none
     steps:
       - uses: actions/checkout@v6
