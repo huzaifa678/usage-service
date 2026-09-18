@@ -91,7 +91,7 @@ def healthz_ready() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/usage/aggregates", response_model=list[AggregateResponse])
+@app.get("/api/v1/usage/aggregates", response_model=list[AggregateResponse])
 def get_aggregates(
     customer_id: Optional[str] = Query(default=None),
     metric: Optional[str] = Query(default=None),
@@ -111,7 +111,7 @@ def get_aggregates(
     ]
 
 
-@app.get("/usage/search", response_model=SearchResponse)
+@app.get("/api/v1/usage/search", response_model=SearchResponse)
 def search_usage(
     q: str = Query(min_length=1),
     k: int = Query(default=5, ge=1, le=50),

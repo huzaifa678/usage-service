@@ -41,7 +41,7 @@ def test_aggregates_serializes_rows(monkeypatch):
     )
     monkeypatch.setattr(api_main, "_query_aggregates", lambda *a, **k: [row])
 
-    response = client.get("/usage/aggregates", params={"metric": "api_calls"})
+    response = client.get("/api/v1/usage/aggregates", params={"metric": "api_calls"})
 
     assert response.status_code == 200
     body = response.json()
@@ -57,7 +57,7 @@ def test_search_returns_hits(monkeypatch):
     )
     monkeypatch.setattr(api_main, "_semantic_search", lambda q, k: [(document, 0.12)])
 
-    response = client.get("/usage/search", params={"q": "api usage", "k": 3})
+    response = client.get("/api/v1/usage/search", params={"q": "api usage", "k": 3})
 
     assert response.status_code == 200
     body = response.json()
@@ -67,5 +67,5 @@ def test_search_returns_hits(monkeypatch):
 
 
 def test_search_requires_query():
-    response = client.get("/usage/search")
+    response = client.get("/api/v1/usage/search")
     assert response.status_code == 422
