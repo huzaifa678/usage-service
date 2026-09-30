@@ -71,6 +71,11 @@ jobs:
         run: |
           trivy image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
             --format table "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push scanned image
         run: docker push "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
