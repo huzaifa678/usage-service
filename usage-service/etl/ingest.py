@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from confluent_kafka import Consumer, KafkaError, Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
 from confluent_kafka.serialization import MessageField, SerializationContext
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from usage_common.config import settings
 from usage_common.db import SessionLocal
@@ -12,6 +14,7 @@ from usage_common.models.usage_event import UsageEvent
 from usage_common.observability.logger import get_logger
 from usage_common.observability.metrics import (
     events_dead_lettered_counter,
+    events_duplicate_counter,
     events_ingested_counter,
 )
 from usage_common.pipeline import Filter, FilterResult
@@ -53,17 +56,25 @@ def _to_decimal(value) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
-def _to_usage_event(record: dict) -> UsageEvent:
-    return UsageEvent(
-        id=str(record["usageChargeId"]),
-        invoice_id=str(record["invoiceId"]),
-        metric=record["metric"],
-        quantity=int(record["quantity"]),
-        unit_price=_to_decimal(record["unitPrice"]),
-        total_price=_to_decimal(record["totalPrice"]),
-        created_at=_to_created_at(record["createdAt"]),
-        embedding_processed=False,
-        processed=False,
+def _to_values(record: dict) -> dict[str, Any]:
+    return {
+        "id": str(record["usageChargeId"]),
+        "invoice_id": str(record["invoiceId"]),
+        "metric": record["metric"],
+        "quantity": int(record["quantity"]),
+        "unit_price": _to_decimal(record["unitPrice"]),
+        "total_price": _to_decimal(record["totalPrice"]),
+        "created_at": _to_created_at(record["createdAt"]),
+        "embedding_processed": False,
+        "processed": False,
+    }
+
+
+def _insert_stmt(record: dict):
+    return (
+        pg_insert(UsageEvent)
+        .values(**_to_values(record))
+        .on_conflict_do_nothing(index_elements=[UsageEvent.id])
     )
 
 
@@ -104,9 +115,10 @@ class IngestFilter(Filter):
         session = SessionLocal()
         processed = 0
         dead_lettered = 0
+        duplicates = 0
 
         try:
-            while processed + dead_lettered < settings.kafka_max_messages:
+            while processed + duplicates + dead_lettered < settings.kafka_max_messages:
                 msg = consumer.poll(settings.kafka_poll_timeout)
 
                 if msg is None:
@@ -123,14 +135,31 @@ class IngestFilter(Filter):
                         msg.value(),
                         SerializationContext(msg.topic(), MessageField.VALUE),
                     )
-                    session.merge(_to_usage_event(record))
-                    processed += 1
+                except Exception as exc:
+                    # Undeserializable payload
+                    _publish_to_dlq(dlq_producer, msg, exc)
+                    dead_lettered += 1
+                    continue
+
+                try:
+                    # A per-message SAVEPOINT. Isolates the bad row where the insert is rolled back
+                    # and then dead lettered, allowing the rest of the batch to not abort by one poision
+                    # record.
+                    with session.begin_nested():
+                        result = session.execute(_insert_stmt(record))
+                    if result.rowcount == 0:
+                        duplicates += 1
+                    else:
+                        processed += 1
                 except Exception as exc:
                     _publish_to_dlq(dlq_producer, msg, exc)
                     dead_lettered += 1
 
+            # Persist the batch, THEN commit offsets so a crash between the two
+            # replays the batch rather than losing it (at-least-once). The insert is
+            # idempotent, so replay is safe.
             session.commit()
-            consumer.commit()
+            consumer.commit(asynchronous=False)
             dlq_producer.flush(10)
         except Exception:
             session.rollback()
@@ -140,11 +169,12 @@ class IngestFilter(Filter):
             consumer.close()
 
         events_ingested_counter().add(processed)
+        events_duplicate_counter().add(duplicates)
         events_dead_lettered_counter().add(dead_lettered)
         return FilterResult(
             name=self.name,
             processed=processed,
-            metrics={"dead_lettered": dead_lettered},
+            metrics={"duplicates": duplicates, "dead_lettered": dead_lettered},
         )
 
 

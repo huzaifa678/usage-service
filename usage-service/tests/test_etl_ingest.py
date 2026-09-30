@@ -3,7 +3,13 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from etl.ingest import _publish_to_dlq, _to_created_at, _to_decimal, _to_usage_event
+from etl.ingest import (
+    _insert_stmt,
+    _publish_to_dlq,
+    _to_created_at,
+    _to_decimal,
+    _to_values,
+)
 
 
 def test_to_decimal_handles_decimal_and_scalars():
@@ -21,8 +27,8 @@ def test_to_created_at_converts_epoch_millis():
     assert _to_created_at(0) == dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 
 
-def test_to_usage_event_maps_and_coerces_fields():
-    record = {
+def _sample_record() -> dict:
+    return {
         "usageChargeId": "11111111-1111-1111-1111-111111111111",
         "invoiceId": "22222222-2222-2222-2222-222222222222",
         "metric": "api_calls",
@@ -32,14 +38,30 @@ def test_to_usage_event_maps_and_coerces_fields():
         "createdAt": dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
     }
 
-    event = _to_usage_event(record)
 
-    assert event.metric == "api_calls"
-    assert event.quantity == 10
-    assert event.unit_price == Decimal("0.50")
-    assert event.total_price == Decimal("5.00")
-    assert event.embedding_processed is False
-    assert event.processed is False
+def test_to_values_maps_and_coerces_fields():
+    values = _to_values(_sample_record())
+
+    assert values["id"] == "11111111-1111-1111-1111-111111111111"
+    assert values["invoice_id"] == "22222222-2222-2222-2222-222222222222"
+    assert values["metric"] == "api_calls"
+    assert values["quantity"] == 10
+    assert values["unit_price"] == Decimal("0.50")
+    assert values["total_price"] == Decimal("5.00")
+    assert values["embedding_processed"] is False
+    assert values["processed"] is False
+
+
+def test_insert_stmt_is_idempotent_on_conflict():
+    from sqlalchemy.dialects import postgresql
+
+    sql = str(
+        _insert_stmt(_sample_record()).compile(dialect=postgresql.dialect())
+    )
+
+    assert "INSERT INTO usage_events" in sql
+    assert "ON CONFLICT" in sql
+    assert "DO NOTHING" in sql
 
 
 def test_publish_to_dlq_produces_with_error_headers():
