@@ -32,6 +32,15 @@ def events_dead_lettered_counter() -> metrics.Counter:
 
 
 @lru_cache(maxsize=1)
+def events_duplicate_counter() -> metrics.Counter:
+    return _meter().create_counter(
+        "usage.events.duplicate",
+        unit="1",
+        description="Redelivered usage-charge events skipped as duplicates (idempotent insert)",
+    )
+
+
+@lru_cache(maxsize=1)
 def aggregates_upserted_counter() -> metrics.Counter:
     return _meter().create_counter(
         "usage.aggregates.upserted",
