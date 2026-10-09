@@ -1,9 +1,8 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.sensors.external_task import ExternalTaskSensor
-from etl.embed import process_embeddings
+from usage_etl_common import make_pod_task
 
 with DAG(
     dag_id="usage_rag_embedding",
@@ -21,9 +20,9 @@ with DAG(
         timeout=600,
     )
 
-    embedding_task = PythonOperator(
-        task_id="process_usage_event_embeddings",
-        python_callable=process_embeddings,
+    # Runs the `embed` image (etl.embed.process_embeddings) as its own pod.
+    embedding_task = make_pod_task(
+        task_id="process_usage_event_embeddings", component="embed"
     )
 
     wait_for_aggregation >> embedding_task

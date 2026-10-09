@@ -1,8 +1,7 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from etl.ingest import consume_kafka_batch
+from usage_etl_common import make_pod_task
 
 with DAG(
     dag_id="usage_kafka_ingestion",
@@ -11,7 +10,5 @@ with DAG(
     catchup=False,
     max_active_runs=1,
 ) as dag:
-    ingest_task = PythonOperator(
-        task_id="consume_kafka_batch",
-        python_callable=consume_kafka_batch,
-    )
+    # Runs the `consumer` image (etl.ingest.consume_kafka_batch) as its own pod.
+    make_pod_task(task_id="consume_kafka_batch", component="consumer")

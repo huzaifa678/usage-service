@@ -1,9 +1,8 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.sensors.external_task import ExternalTaskSensor
-from etl.aggregate import aggregate_usage_events
+from usage_etl_common import make_pod_task
 
 with DAG(
     dag_id="usage_aggregation",
@@ -21,9 +20,9 @@ with DAG(
         timeout=600,
     )
 
-    aggregation_task = PythonOperator(
-        task_id="aggregate_usage_events",
-        python_callable=aggregate_usage_events,
+    # Runs the `aggregation` image (etl.aggregate.aggregate_usage_events) as its own pod.
+    aggregation_task = make_pod_task(
+        task_id="aggregate_usage_events", component="aggregation"
     )
 
     wait_for_ingestion >> aggregation_task
