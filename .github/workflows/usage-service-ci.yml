@@ -5,17 +5,14 @@ on:
     branches: [dev]
     paths: [usage-service/**]
   workflow_dispatch:
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
+jobs:
+  # Lint + unit tests run once, independent of the image matrix.
+  test:
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: usage-service
-
     steps:
       - uses: actions/checkout@v7
 
@@ -37,6 +34,42 @@ jobs:
       - name: Run tests
         run: pytest
 
+  # Build/scan/push all four images into the single `usage-service` ECR repo.
+  # Distinct per-image tags (`<name>-sha-<sha>`) let one repo hold all of them:
+  #   airflow      - Airflow scheduler/workers image (Option A orchestrator)
+  #   aggregation  - Airflow job image (etl.aggregate)
+  #   consumer     - Airflow job image (etl.ingest; includes avro/)
+  #   embed        - Airflow job image (etl.embed)
+  # The airflow base builds from context usage-service/airflow; the three job
+  # images build from the repo-level usage-service context because they COPY
+  # etl/, usage_common/ (and consumer also airflow/avro/).
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: airflow
+            context: usage-service/airflow
+            file: usage-service/airflow/Dockerfile
+            # Accepted, non-fixable pip/setuptools-vendored findings (documented there).
+            trivyignore: usage-service/airflow/.trivyignore
+          - name: aggregation
+            context: usage-service
+            file: usage-service/airflow/Dockerfile.aggregation
+          - name: consumer
+            context: usage-service
+            file: usage-service/airflow/Dockerfile.consumer
+          - name: embed
+            context: usage-service
+            file: usage-service/airflow/Dockerfile.embed
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -56,21 +89,24 @@ jobs:
       - name: Build image (load locally for scanning)
         uses: docker/build-push-action@v7
         with:
-          context: usage-service/airflow
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: false
           load: true
-          tags: ${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}
-
-      - name: Install Trivy
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b "$HOME/.local/bin" v0.58.1
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          tags: ${{ steps.ecr.outputs.url }}:${{ matrix.name }}-sha-${{ github.sha }}
 
       - name: Trivy image scan (scan-before-push gate)
-        run: |
-          trivy image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
-            --format table "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.ecr.outputs.url }}:${{ matrix.name }}-sha-${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+          # Only the airflow entry sets this; empty for the slim job images (fully gated).
+          trivyignores: ${{ matrix.trivyignore }}
         env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
@@ -78,4 +114,4 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push scanned image
-        run: docker push "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
+        run: docker push "${{ steps.ecr.outputs.url }}:${{ matrix.name }}-sha-${{ github.sha }}"
