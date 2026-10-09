@@ -55,9 +55,7 @@ def test_to_values_maps_and_coerces_fields():
 def test_insert_stmt_is_idempotent_on_conflict():
     from sqlalchemy.dialects import postgresql
 
-    sql = str(
-        _insert_stmt(_sample_record()).compile(dialect=postgresql.dialect())
-    )
+    sql = str(_insert_stmt(_sample_record()).compile(dialect=postgresql.dialect()))
 
     assert "INSERT INTO usage_events" in sql
     assert "ON CONFLICT" in sql
