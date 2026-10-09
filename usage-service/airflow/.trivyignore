@@ -1,0 +1,21 @@
+# usage-service / airflow image — accepted, non-fixable findings. Reviewed 2026-10-09.
+#
+# The refactor took this image from 222 HIGH/CRITICAL to these 4 (0 CRITICAL). What
+# remains are copies VENDORED INSIDE pip/setuptools themselves — not packages this
+# image installs or that any DAG/ETL module imports:
+#   * pip bundles its own urllib3 + msgpack under pip/_vendor/ (even the latest pip,
+#     26.2.1, still ships urllib3 2.7.0 / msgpack 1.1.2 — they cannot be upgraded in
+#     place without breaking pip).
+#   * setuptools ships a bootstrap wheel copy flagged for the PackageIndex path traversal.
+# These are used only by pip/setuptools' own machinery, are not reachable from the ETL
+# runtime, and the copies the code actually imports are patched (urllib3 2.8.0,
+# msgpack 1.2.2 in user site-packages). No fixed release removes the vendored copies.
+#
+# Scope note: keep this file for the airflow image ONLY. The three slim job images and
+# the app's own requirements must stay fully gated — do not copy these IDs there.
+# Re-review by: 2027-04-09 (or sooner if pip/setuptools ship de-vendored builds).
+
+CVE-2026-97687        # urllib3 (pip/_vendor, snowflake vendored) — HTTPS proxy TLS config override
+CVE-2026-97689        # urllib3 (pip/_vendor, snowflake vendored) — DoS via unbounded chunk parser
+GHSA-6v7p-g79w-8964   # msgpack (pip/_vendor) — out-of-bounds read on Unpacker reuse
+CVE-2025-47273        # setuptools bootstrap wheel — PackageIndex path traversal
