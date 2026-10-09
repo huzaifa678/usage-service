@@ -1,16 +1,28 @@
 name: usage-service CD
 
+# Promotion model (matches the CD repo's env design):
+#   dev     -> ArgoCD Image Updater (handled in the CD repo, not here)
+#   staging -> automatic, on PR to main (this workflow)
+#   prod    -> manual, gated: run this workflow via "Run workflow" (workflow_dispatch);
+#              the `production` GitHub Environment supplies the required-reviewer gate.
+# One ECR repo (`usage-service`) holds all four images under per-image tags:
+#   airflow / aggregation / consumer / embed  (suffixed -sha-<sha>, -staging, -prod).
 on:
   pull_request:
     branches: [main]
     paths: [usage-service/**]
+  workflow_dispatch: {}
 
 jobs:
-  deploy:
+  promote:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+    # staging on PR; prod only on manual dispatch (gated by the `production` env).
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
+    env:
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && 'prod' || 'staging' }}
 
     steps:
       - name: Generate GitHub App token
@@ -40,15 +52,43 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Retag sha → prod
+      - name: Promote images to ${{ env.TARGET_ENV }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          MANIFEST=$(aws ecr batch-get-image --repository-name usage-service \
-            --image-ids imageTag=sha-${{ github.sha }} \
-            --query 'images[0].imageManifest' --output text)
-          aws ecr put-image --repository-name usage-service \
-            --image-tag prod --image-manifest "$MANIFEST"
+          set -euo pipefail
+          IMAGES="airflow aggregation consumer embed"
 
-      - name: Update ArgoCD values-prod.yaml
+          # staging promotes the exact CI-built artifact (*-sha-<PR head sha>);
+          # prod promotes whatever currently carries *-staging (staging-tested).
+          if [ "${TARGET_ENV}" = "staging" ]; then
+            SRC_SUFFIX="sha-${HEAD_SHA}"
+          else
+            SRC_SUFFIX="staging"
+          fi
+
+          retag() {  # $1 = source tag, $2 = destination tag
+            local manifest
+            manifest=$(aws ecr batch-get-image --repository-name usage-service \
+              --image-ids imageTag="$1" --query 'images[0].imageManifest' --output text)
+            if [ "$manifest" = "None" ] || [ -z "$manifest" ]; then
+              echo "::error::source tag '$1' not found in ECR — was it built & scanned by CI?"
+              exit 1
+            fi
+            # put-image is idempotent; ignore 'tag already points here' errors.
+            aws ecr put-image --repository-name usage-service \
+              --image-tag "$2" --image-manifest "$manifest" >/dev/null || true
+          }
+
+          for img in $IMAGES; do
+            retag "${img}-${SRC_SUFFIX}" "${img}-${TARGET_ENV}"
+          done
+
+          # The usage-service Helm chart pins a single image by the plain env tag
+          # (values-<env>.yaml -> image.tag: <env>); point that at the airflow image.
+          retag "airflow-${SRC_SUFFIX}" "${TARGET_ENV}"
+
+      - name: Update ArgoCD values-${{ env.TARGET_ENV }}.yaml
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -59,8 +99,8 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           chmod +x /usr/local/bin/yq
 
-          yq -i '.image.repository = "${{ steps.ecr.outputs.url }}"' charts/usage-service/values-prod.yaml
-          yq -i '.image.tag = "prod"' charts/usage-service/values-prod.yaml
+          yq -i '.image.repository = "${{ steps.ecr.outputs.url }}"' "charts/usage-service/values-${TARGET_ENV}.yaml"
+          yq -i ".image.tag = \"${TARGET_ENV}\"" "charts/usage-service/values-${TARGET_ENV}.yaml"
 
       - name: Commit and Push
         env:
@@ -69,6 +109,7 @@ jobs:
           cd /tmp/cd
           git config user.email "${{ steps.app-token.outputs.installation-id }}+saas-gitops-bot[bot]@users.noreply.github.com"
           git config user.name "SAAS-gitops-bot[bot]"
-          git add charts/usage-service/values-prod.yaml
-          git commit -m "cd(usage-service): promote sha-${{ github.sha }} to prod"
+          git add "charts/usage-service/values-${TARGET_ENV}.yaml"
+          git commit -m "cd(usage-service): promote ${TARGET_ENV} (airflow + aggregation/consumer/embed)" \
+            || { echo "nothing to promote"; exit 0; }
           git push
