@@ -1,0 +1,114 @@
+# Local development stack for usage-service (Python ETL + FastAPI).
+#   docker compose up --build
+# There is no standalone API Dockerfile, so the API reuses the consumer image
+# (which installs the deps + librdkafka) and mounts the source for live code.
+# OPENAI_API_KEY is read from your shell env — export it for the embedding path.
+name: usage-service
+
+x-usage-env: &usage-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  SCHEMA_REGISTRY_URL: http://schema-registry:9094
+  KAFKA_GROUP_ID: usage-service
+  DATABASE_URL: postgresql+psycopg2://usage_user:usage_password@postgres:5432/usage_db
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: usage_user
+  POSTGRES_PASSWORD: usage_password
+  POSTGRES_DB: usage_db
+  CHROMA_HOST: chroma
+  CHROMA_PORT: "8000"
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OTEL_SERVICE_NAME: usage-service
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: usage_db
+      POSTGRES_USER: usage_user
+      POSTGRES_PASSWORD: usage_password
+    ports:
+      - "5435:5432" # usage's documented host port
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usage_user -d usage_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:9094
+    ports:
+      - "9094:9094"
+
+  chroma:
+    image: chromadb/chroma:0.5.5 # vector store for usage embeddings
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadata:/chroma/chroma
+
+  usage-api:
+    build:
+      context: ./usage-service
+      dockerfile: airflow/Dockerfile.consumer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *usage-env
+      AVRO_SCHEMA_PATH: /app/airflow/avro/usage_event.avsc
+    volumes:
+      - ./usage-service:/app # mount source so the API code is present and live
+    command: ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+
+  usage-etl-consumer:
+    build:
+      context: ./usage-service
+      dockerfile: airflow/Dockerfile.consumer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    environment:
+      <<: *usage-env
+    # Image CMD runs etl.ingest.consume_kafka_batch.
+
+volumes:
+  pgdata:
+  chromadata:
