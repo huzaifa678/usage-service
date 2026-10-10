@@ -48,3 +48,12 @@ opentelemetry-instrumentation-fastapi==0.65b0
 opentelemetry-instrumentation-requests==0.65b0
 opentelemetry-instrumentation-sqlalchemy==0.65b0
 opentelemetry-instrumentation-logging==0.65b0
+
+# Security overrides (pin transitive deps to patched versions; keeps Trivy clean)
+setuptools>=78.1.1
+wheel>=0.46.2
+virtualenv>=21.7.13
+jaraco.context>=6.1.0
+msgpack>=1.2.1
+tornado>=6.5.9
+urllib3>=2.8.0
