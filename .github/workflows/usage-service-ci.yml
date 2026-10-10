@@ -61,12 +61,15 @@ jobs:
           - name: aggregation
             context: usage-service
             file: usage-service/airflow/Dockerfile.aggregation
+            trivyignore: usage-service/airflow/.trivyignore
           - name: consumer
             context: usage-service
             file: usage-service/airflow/Dockerfile.consumer
+            trivyignore: usage-service/airflow/.trivyignore
           - name: embed
             context: usage-service
             file: usage-service/airflow/Dockerfile.embed
+            trivyignore: usage-service/airflow/.trivyignore
     steps:
       - uses: actions/checkout@v7
 
