@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from airflow import DAG
 from usage_etl_common import make_pod_task
+
+from airflow import DAG
 
 with DAG(
     dag_id="usage_kafka_ingestion",

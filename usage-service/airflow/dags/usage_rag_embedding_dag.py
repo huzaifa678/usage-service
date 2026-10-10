@@ -1,8 +1,9 @@
 from datetime import datetime
 
+from usage_etl_common import make_pod_task
+
 from airflow import DAG
 from airflow.sensors.external_task import ExternalTaskSensor
-from usage_etl_common import make_pod_task
 
 with DAG(
     dag_id="usage_rag_embedding",
