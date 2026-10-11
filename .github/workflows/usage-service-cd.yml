@@ -1,28 +1,27 @@
 name: usage-service CD
 
-# Promotion model (matches the CD repo's env design):
-#   dev     -> ArgoCD Image Updater (handled in the CD repo, not here)
-#   staging -> automatic, on PR to main (this workflow)
-#   prod    -> manual, gated: run this workflow via "Run workflow" (workflow_dispatch);
-#              the `production` GitHub Environment supplies the required-reviewer gate.
-# One ECR repo (`usage-service`) holds all four images under per-image tags:
-#   airflow / aggregation / consumer / embed  (suffixed -sha-<sha>, -staging, -prod).
 on:
   pull_request:
     branches: [main]
     paths: [usage-service/**]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable CI sha tag shared by all four images (e.g. sha-<commit>) — STAGING only"
+        required: true
+        type: string
 
 jobs:
   promote:
     runs-on: ubuntu-latest
+    # prod (the pull_request leg) is gated by the `production` GitHub Environment
+    # (required reviewers); staging (workflow_dispatch) runs ungated.
+    environment: ${{ github.event_name == 'pull_request' && 'production' || '' }}
     permissions:
       id-token: write
       contents: read
-    # staging on PR; prod only on manual dispatch (gated by the `production` env).
-    environment: ${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
     env:
-      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && 'prod' || 'staging' }}
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && 'staging' || 'prod' }}
 
     steps:
       - name: Generate GitHub App token
@@ -52,21 +51,31 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Promote images to ${{ env.TARGET_ENV }}
+      # STAGING (manual dispatch): verify all four immutable component images exist
+      # for the given sha; they are pinned directly (no retag).
+      - name: Verify staging images
+        if: github.event_name == 'workflow_dispatch'
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
-          IMAGES="airflow aggregation consumer embed"
+          for img in airflow aggregation consumer embed; do
+            if ! aws ecr describe-images --repository-name usage-service \
+                 --image-ids imageTag="${img}-${IMAGE_TAG}" >/dev/null 2>&1; then
+              echo "::error::image tag '${img}-${IMAGE_TAG}' not found in ECR repo 'usage-service'."
+              exit 1
+            fi
+          done
+          echo "all four usage-service images present for ${IMAGE_TAG} -> staging"
 
-          # staging promotes the exact CI-built artifact (*-sha-<PR head sha>);
-          # prod promotes whatever currently carries *-staging (staging-tested).
-          if [ "${TARGET_ENV}" = "staging" ]; then
-            SRC_SUFFIX="sha-${HEAD_SHA}"
-          else
-            SRC_SUFFIX="staging"
-          fi
-
+      # PROD (PR to main): retag the four CI build sha images to floating
+      # <component>-prod, plus airflow-<sha> -> plain `prod` for the HTTP chart.
+      - name: Retag sha → prod (four images + chart)
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
           retag() {  # $1 = source tag, $2 = destination tag
             local manifest
             manifest=$(aws ecr batch-get-image --repository-name usage-service \
@@ -75,23 +84,22 @@ jobs:
               echo "::error::source tag '$1' not found in ECR — was it built & scanned by CI?"
               exit 1
             fi
-            # put-image is idempotent; ignore 'tag already points here' errors.
             aws ecr put-image --repository-name usage-service \
               --image-tag "$2" --image-manifest "$manifest" >/dev/null || true
           }
-
-          for img in $IMAGES; do
-            retag "${img}-${SRC_SUFFIX}" "${img}-${TARGET_ENV}"
+          for img in airflow aggregation consumer embed; do
+            retag "${img}-sha-${HEAD_SHA}" "${img}-prod"
           done
+          # HTTP Rollout pins a single plain env tag pointing at the airflow image.
+          retag "airflow-sha-${HEAD_SHA}" "prod"
 
-          # The usage-service Helm chart pins a single image by the plain env tag
-          # (values-<env>.yaml -> image.tag: <env>); point that at the airflow image.
-          retag "airflow-${SRC_SUFFIX}" "${TARGET_ENV}"
-
-      - name: Update ArgoCD values-${{ env.TARGET_ENV }}.yaml
+      - name: Update ArgoCD values-${{ env.TARGET_ENV }}.yaml (chart + airflow ETL)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ECR_URL: ${{ steps.ecr.outputs.url }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
+          set -euo pipefail
           git clone https://x-access-token:${GH_TOKEN}@github.com/huzaifa678/SAAS-Continious-Delivery.git /tmp/cd
           cd /tmp/cd
 
@@ -99,17 +107,37 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           chmod +x /usr/local/bin/yq
 
-          yq -i '.image.repository = "${{ steps.ecr.outputs.url }}"' "charts/usage-service/values-${TARGET_ENV}.yaml"
-          yq -i ".image.tag = \"${TARGET_ENV}\"" "charts/usage-service/values-${TARGET_ENV}.yaml"
+          # staging pins the immutable airflow-sha-<sha>; prod uses the floating `prod`
+          # tag. The ETL DAG tag is the sha suffix (staging) or `prod` (prod).
+          if [ "${TARGET_ENV}" = "staging" ]; then
+            CHART_TAG="airflow-${IMAGE_TAG}"
+            ETL_TAG="${IMAGE_TAG}"
+          else
+            CHART_TAG="prod"
+            ETL_TAG="prod"
+          fi
+
+          CHART_TAG="${CHART_TAG}" yq -i \
+            '.image.repository = strenv(ECR_URL) | .image.tag = strenv(CHART_TAG)' \
+            "charts/usage-service/values-${TARGET_ENV}.yaml"
+
+          ETL_TAG="${ETL_TAG}" yq -i \
+            '(.airflow.airflow.extraEnv[] | select(.name=="USAGE_ETL_IMAGE_TAG") | .value) = strenv(ETL_TAG)' \
+            "gitops/infra/airflow/values-${TARGET_ENV}.yaml"
 
       - name: Commit and Push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
+          set -euo pipefail
           cd /tmp/cd
           git config user.email "${{ steps.app-token.outputs.installation-id }}+saas-gitops-bot[bot]@users.noreply.github.com"
           git config user.name "SAAS-gitops-bot[bot]"
-          git add "charts/usage-service/values-${TARGET_ENV}.yaml"
-          git commit -m "cd(usage-service): promote ${TARGET_ENV} (airflow + aggregation/consumer/embed)" \
-            || { echo "nothing to promote"; exit 0; }
+          git add "charts/usage-service/values-${TARGET_ENV}.yaml" \
+                  "gitops/infra/airflow/values-${TARGET_ENV}.yaml"
+          if git diff --cached --quiet; then
+            echo "values-${TARGET_ENV} already current — nothing to commit."
+            exit 0
+          fi
+          git commit -m "cd(usage-service): promote to ${TARGET_ENV} (chart airflow image + ETL DAG images)"
           git push
