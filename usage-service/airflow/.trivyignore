@@ -19,3 +19,4 @@ CVE-2026-97687        # urllib3 (pip/_vendor, snowflake vendored) — HTTPS prox
 CVE-2026-97689        # urllib3 (pip/_vendor, snowflake vendored) — DoS via unbounded chunk parser
 GHSA-6v7p-g79w-8964   # msgpack (pip/_vendor) — out-of-bounds read on Unpacker reuse
 CVE-2025-47273        # setuptools bootstrap wheel — PackageIndex path traversal
+GHSA-hq85-5cpj-mr62   # uv (airflow base + prek-bundled tool binary) — bundled emSign root CA; uv is a package installer, not reachable from ETL runtime TLS
