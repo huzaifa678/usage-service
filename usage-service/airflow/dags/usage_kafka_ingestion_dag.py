@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from usage_etl_common import make_pod_task
+from usage_etl_common import INGEST_PARALLELISM, make_pod_task
 
 from airflow import DAG
 
@@ -11,5 +11,10 @@ with DAG(
     catchup=False,
     max_active_runs=1,
 ) as dag:
-    # Runs the `consumer` image (etl.ingest.consume_kafka_batch) as its own pod.
-    make_pod_task(task_id="consume_kafka_batch", component="consumer")
+    # Runs the `consumer` image (etl.ingest.consume_kafka_batch) as its own pod;
+    # INGEST_PARALLELISM > 1 fans out that many consumers in the shared group.
+    make_pod_task(
+        task_id="consume_kafka_batch",
+        component="consumer",
+        parallelism=INGEST_PARALLELISM,
+    )
