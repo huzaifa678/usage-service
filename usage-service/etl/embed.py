@@ -46,10 +46,15 @@ class EmbedFilter(Filter):
 
     def process(self) -> FilterResult:
         with session_scope() as session:
+            # FOR UPDATE SKIP LOCKED lets several embed pods run in parallel:
+            # each claims a disjoint batch and skips rows another pod already
+            # locked, instead of all pods fighting over the same head rows. The
+            # lock is held until this session commits (end of session_scope).
             events = (
                 session.query(UsageEvent)
                 .filter_by(embedding_processed=False)
                 .limit(settings.embedding_batch_size)
+                .with_for_update(skip_locked=True)
                 .all()
             )
 

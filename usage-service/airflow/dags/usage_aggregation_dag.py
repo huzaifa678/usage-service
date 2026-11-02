@@ -12,11 +12,13 @@ with DAG(
     catchup=False,
     max_active_runs=1,
 ) as dag:
+    # deferrable hands the wait to the triggerer process (deployed by the chart)
+    # instead of holding a KubernetesExecutor pod slot for the whole poke window.
     wait_for_ingestion = ExternalTaskSensor(
         task_id="wait_for_kafka_ingestion",
         external_dag_id="usage_kafka_ingestion",
         external_task_id="consume_kafka_batch",
-        mode="poke",
+        deferrable=True,
         poke_interval=30,
         timeout=600,
     )
