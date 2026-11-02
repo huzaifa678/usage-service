@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 
 from usage_common.config import settings
@@ -29,8 +29,16 @@ def _build_rows(daily: dict, monthly: dict, rolling: dict) -> list[dict]:
     ]
 
 
-def _totals_since(session, period: str) -> dict:
-    rows = session.execute(
+def _key_filter(keys: set | None):
+    """tuple IN predicate restricting a query to the dirty (invoice_id, metric)
+    keys, or None to aggregate every key (full refresh)."""
+    if not keys:
+        return None
+    return tuple_(UsageEvent.invoice_id, UsageEvent.metric).in_(list(keys))
+
+
+def _totals_since(session, period: str, keys: set | None) -> dict:
+    stmt = (
         select(
             UsageEvent.invoice_id,
             UsageEvent.metric,
@@ -38,12 +46,16 @@ def _totals_since(session, period: str) -> dict:
         )
         .where(UsageEvent.created_at >= func.date_trunc(period, func.now()))
         .group_by(UsageEvent.invoice_id, UsageEvent.metric)
-    ).all()
+    )
+    key_filter = _key_filter(keys)
+    if key_filter is not None:
+        stmt = stmt.where(key_filter)
+    rows = session.execute(stmt).all()
     return {(row[0], row[1]): row[2] for row in rows}
 
 
-def _rolling_average(session, window_start: datetime) -> dict:
-    daily_buckets = (
+def _rolling_average(session, window_start: datetime, keys: set | None) -> dict:
+    daily = (
         select(
             UsageEvent.invoice_id.label("invoice_id"),
             UsageEvent.metric.label("metric"),
@@ -56,8 +68,11 @@ def _rolling_average(session, window_start: datetime) -> dict:
             UsageEvent.metric,
             func.date_trunc("day", UsageEvent.created_at),
         )
-        .subquery()
     )
+    key_filter = _key_filter(keys)
+    if key_filter is not None:
+        daily = daily.where(key_filter)
+    daily_buckets = daily.subquery()
     rows = session.execute(
         select(
             daily_buckets.c.invoice_id,
@@ -66,6 +81,24 @@ def _rolling_average(session, window_start: datetime) -> dict:
         ).group_by(daily_buckets.c.invoice_id, daily_buckets.c.metric)
     ).all()
     return {(row[0], row[1]): row[2] for row in rows}
+
+
+def _pending(session) -> tuple[list, set]:
+    rows = session.execute(
+        select(UsageEvent.id, UsageEvent.invoice_id, UsageEvent.metric).where(
+            UsageEvent.processed.is_(False)
+        )
+    ).all()
+    ids = [row[0] for row in rows]
+    keys = {(row[1], row[2]) for row in rows}
+    return ids, keys
+
+
+def _mark_processed(session, ids: list) -> None:
+    if ids:
+        session.execute(
+            update(UsageEvent).where(UsageEvent.id.in_(ids)).values(processed=True)
+        )
 
 
 class AggregateFilter(Filter):
@@ -78,12 +111,29 @@ class AggregateFilter(Filter):
         )
 
         with session_scope() as session:
-            daily = _totals_since(session, "day")
-            monthly = _totals_since(session, "month")
-            rolling = _rolling_average(session, window_start)
+            if settings.aggregate_full_refresh:
+                # True-up mode: recompute every key's windows regardless of the
+                # flag. Running on a slow cadence (e.g. an hourly/daily DAG) to
+                # correct keys that went silent their daily/monthly totals are
+                # only re-zeroed at a period boundary by a full refresh.
+                pending_ids: list = []
+                keys: set | None = None
+            else:
+                # Incremental: only recompute keys with new events since the last
+                # run — O(keys touched) instead of O(window) every minute.
+                pending_ids, keys = _pending(session)
+                if not pending_ids:
+                    return FilterResult(name=self.name, processed=0)
+
+            daily = _totals_since(session, "day", keys)
+            monthly = _totals_since(session, "month", keys)
+            rolling = _rolling_average(session, window_start, keys)
 
             rows = _build_rows(daily, monthly, rolling)
             if not rows:
+                # Dirty events fell outside every window; clear the flag so we
+                # don't reprocess them forever.
+                _mark_processed(session, pending_ids)
                 return FilterResult(name=self.name, processed=0)
 
             stmt = insert(UsageAggregate).values(rows)
@@ -97,6 +147,7 @@ class AggregateFilter(Filter):
                 },
             )
             session.execute(stmt)
+            _mark_processed(session, pending_ids)
             upserted = len(rows)
 
         aggregates_upserted_counter().add(upserted)

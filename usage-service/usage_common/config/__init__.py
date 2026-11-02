@@ -42,8 +42,12 @@ class Settings:
             "KAFKA_DLQ_TOPIC", "billing.usage-charge.created.DLT"
         )
     )
+    # Ceiling on messages drained per ingest run. Throughput is bounded by
+    # kafka_max_messages per scheduled run, so 100 capped ingest at ~100/min;
+    # raised to drain real consumer-group lag. Tune against batch latency and
+    # the per-message SAVEPOINT overhead (the whole batch is one transaction).
     kafka_max_messages: int = field(
-        default_factory=lambda: int(os.getenv("KAFKA_MAX_MESSAGES", "100"))
+        default_factory=lambda: int(os.getenv("KAFKA_MAX_MESSAGES", "2000"))
     )
     kafka_poll_timeout: float = field(
         default_factory=lambda: float(os.getenv("KAFKA_POLL_TIMEOUT", "1.0"))
@@ -61,12 +65,22 @@ class Settings:
     pgvector_collection: str = field(
         default_factory=lambda: os.getenv("PGVECTOR_COLLECTION", "usage_events")
     )
+    # Events embedded per run; raised so embed keeps up with ingest. Bounded in
+    # practice by the embedding provider's rate limits, so tune to taste.
     embedding_batch_size: int = field(
-        default_factory=lambda: int(os.getenv("EMBEDDING_BATCH_SIZE", "200"))
+        default_factory=lambda: int(os.getenv("EMBEDDING_BATCH_SIZE", "1000"))
     )
 
     rolling_window_days: int = field(
         default_factory=lambda: int(os.getenv("ROLLING_WINDOW_DAYS", "7"))
+    )
+
+    # Incremental aggregation by default (only recompute keys with new events,
+    # driven by UsageEvent.processed). Set true to force a full recompute of
+    # every key's windows — run that on a slow cadence to true up silent keys.
+    aggregate_full_refresh: bool = field(
+        default_factory=lambda: os.getenv("AGGREGATE_FULL_REFRESH", "false").lower()
+        == "true"
     )
 
     otel_endpoint: str = field(
