@@ -13,8 +13,18 @@ RUN find / -path "*/ensurepip/_bundled/*.whl" -delete 2>/dev/null || true
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Reproducible, hash-verified install from uv.lock. uv is an ephemeral build tool
+# (removed after); deps land in /app/.venv, which goes on PATH. Pin uv to a current
+# release (ideally by @sha256 digest). The base image's system python3.11 is used
+# (UV_PYTHON_DOWNLOADS=never), so uv never fetches its own interpreter.
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project --no-cache && rm -f /bin/uv
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY usage_common/ usage_common/
 COPY etl/ etl/
