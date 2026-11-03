@@ -21,8 +21,15 @@ setuptools>=78.1.1
 wheel>=0.46.2
 virtualenv>=21.7.13
 jaraco.context>=6.1.0
-msgpack>=1.2.1
+msgpack>=1.2.3         # CVE-2026-114613 (DoS via map-deserialization memory leak)
 tornado>=6.5.9
 urllib3>=2.8.0
 aiohttp>=3.14.4        # CVE-2026-111064/111066, GHSA-2g87-pp6c-29x5 (DoS)
 certifi>=2026.10.19    # GHSA-6q48-6c7w-9gw2 (bundled emSign root CA)
+# apache-airflow / Flask-AppBuilder auth + git stack (base image transitives):
+Authlib>=1.9.1         # CVE-2026-96760 (CRITICAL sig bypass) + 114615/114616/116672 (authn/authz bypass)
+oauthlib>=4.0.0        # CVE-2026-118669, CVE-2026-49272 (privilege escalation / token disclosure)
+GitPython>=3.2.1       # CVE-2026-114145 + GHSA-23mf/f9j4/m64x/w8jc (RCE / file read / cmd injection)
+dnspython>=2.9.0       # CVE-2026-114605 (DoS via DNS compression pointer traversal)
+filelock>=4.2.1        # CVE-2026-112940 (arbitrary file overwrite)
+pyasn1>=0.6.5          # CVE-2026-119194/119195/119196/119197 (DoS)
