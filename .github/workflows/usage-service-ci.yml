@@ -16,33 +16,35 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
+          enable-cache: true
+          cache-dependency-glob: usage-service/uv.lock
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: usage-service/requirements.txt
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies (locked)
+        run: uv sync --frozen
 
       - name: Lint (ruff)
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Format check (black)
-        run: black --check .
+        run: uv run black --check .
 
       - name: Run tests
-        run: pytest
+        run: uv run pytest
 
-  # Build/scan/push all four images into the single `usage-service` ECR repo.
+  # Build/scan/push all five images into the single `usage-service` ECR repo.
   # Distinct per-image tags (`<name>-sha-<sha>`) let one repo hold all of them:
   #   airflow      - Airflow scheduler/workers image (Option A orchestrator)
   #   aggregation  - Airflow job image (etl.aggregate)
   #   consumer     - Airflow job image (etl.ingest; includes avro/)
   #   embed        - Airflow job image (etl.embed)
-  # The airflow base builds from context usage-service/airflow; the three job
+  #   api          - FastAPI read path (api.main); bundles migrations/ + alembic.ini
+  # The airflow base builds from context usage-service/airflow; the job and api
   # images build from the repo-level usage-service context because they COPY
-  # etl/, usage_common/ (and consumer also airflow/avro/).
+  # etl/, usage_common/, api/ (and consumer also airflow/avro/).
   build:
     needs: test
     runs-on: ubuntu-latest
@@ -69,6 +71,10 @@ jobs:
           - name: embed
             context: usage-service
             file: usage-service/airflow/Dockerfile.embed
+            trivyignore: usage-service/airflow/.trivyignore
+          - name: api
+            context: usage-service
+            file: usage-service/airflow/Dockerfile.api
             trivyignore: usage-service/airflow/.trivyignore
     steps:
       - uses: actions/checkout@v7

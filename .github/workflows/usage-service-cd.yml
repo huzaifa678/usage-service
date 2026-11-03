@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Immutable CI sha tag shared by all four images (e.g. sha-<commit>) — STAGING only"
+        description: "Immutable CI sha tag shared by all five images (e.g. sha-<commit>) — STAGING only"
         required: true
         type: string
 
@@ -51,7 +51,7 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # STAGING (manual dispatch): verify all four immutable component images exist
+      # STAGING (manual dispatch): verify all five immutable component images exist
       # for the given sha; they are pinned directly (no retag).
       - name: Verify staging images
         if: github.event_name == 'workflow_dispatch'
@@ -59,18 +59,18 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
-          for img in airflow aggregation consumer embed; do
+          for img in airflow aggregation consumer embed api; do
             if ! aws ecr describe-images --repository-name usage-service \
                  --image-ids imageTag="${img}-${IMAGE_TAG}" >/dev/null 2>&1; then
               echo "::error::image tag '${img}-${IMAGE_TAG}' not found in ECR repo 'usage-service'."
               exit 1
             fi
           done
-          echo "all four usage-service images present for ${IMAGE_TAG} -> staging"
+          echo "all five usage-service images present for ${IMAGE_TAG} -> staging"
 
-      # PROD (PR to main): retag the four CI build sha images to floating
-      # <component>-prod, plus airflow-<sha> -> plain `prod` for the HTTP chart.
-      - name: Retag sha → prod (four images + chart)
+      # PROD (PR to main): retag the five CI build sha images to floating
+      # <component>-prod, plus api-<sha> -> plain `prod` for the HTTP chart.
+      - name: Retag sha → prod (five images + chart)
         if: github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.sha }}
@@ -87,11 +87,11 @@ jobs:
             aws ecr put-image --repository-name usage-service \
               --image-tag "$2" --image-manifest "$manifest" >/dev/null || true
           }
-          for img in airflow aggregation consumer embed; do
+          for img in airflow aggregation consumer embed api; do
             retag "${img}-sha-${HEAD_SHA}" "${img}-prod"
           done
-          # HTTP Rollout pins a single plain env tag pointing at the airflow image.
-          retag "airflow-sha-${HEAD_SHA}" "prod"
+          # The HTTP Rollout pins a single plain env tag pointing at the api image.
+          retag "api-sha-${HEAD_SHA}" "prod"
 
       - name: Update ArgoCD values-${{ env.TARGET_ENV }}.yaml (chart + airflow ETL)
         env:
@@ -107,10 +107,11 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           chmod +x /usr/local/bin/yq
 
-          # staging pins the immutable airflow-sha-<sha>; prod uses the floating `prod`
-          # tag. The ETL DAG tag is the sha suffix (staging) or `prod` (prod).
+          # The chart serves the FastAPI read path, so it pins the api image:
+          # staging the immutable api-sha-<sha>, prod the floating `prod` tag (also
+          # the api image). The ETL DAG tag is the sha suffix (staging) or `prod`.
           if [ "${TARGET_ENV}" = "staging" ]; then
-            CHART_TAG="airflow-${IMAGE_TAG}"
+            CHART_TAG="api-${IMAGE_TAG}"
             ETL_TAG="${IMAGE_TAG}"
           else
             CHART_TAG="prod"

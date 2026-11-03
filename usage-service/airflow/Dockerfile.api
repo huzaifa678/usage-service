@@ -1,0 +1,49 @@
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends gcc git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN for py in /usr/local/bin/python3 /usr/bin/python3; do \
+      [ -x "$py" ] && "$py" -m pip install --no-cache-dir --upgrade --root-user-action=ignore pip setuptools wheel || true; \
+    done
+
+RUN find / -path "*/ensurepip/_bundled/*.whl" -delete 2>/dev/null || true
+
+WORKDIR /app
+
+# Reproducible, hash-verified install from uv.lock. uv is an ephemeral build tool
+# (removed after); deps land in /app/.venv, which goes on PATH. Pin uv to a current
+# release (ideally by @sha256 digest). The base image's system python3.11 is used
+# (UV_PYTHON_DOWNLOADS=never), so uv never fetches its own interpreter.
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project --no-cache && rm -f /bin/uv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Read path: the FastAPI app (api.main:app) plus its ORM models/config and the
+# Alembic migrations. Migrations are shipped so a Job/initContainer can run
+# `alembic upgrade head`; the app CMD does NOT run them (multiple API replicas
+# must not race the schema — run migrations as a separate step).
+COPY usage_common/ usage_common/
+COPY api/ api/
+COPY migrations/ migrations/
+COPY alembic.ini .
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8083
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8083/healthz/ready')" || exit 1
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8083"]
