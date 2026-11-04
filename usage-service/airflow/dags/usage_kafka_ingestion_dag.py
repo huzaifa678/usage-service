@@ -2,7 +2,7 @@ from datetime import datetime
 
 from usage_etl_common import INGEST_PARALLELISM, make_pod_task
 
-from airflow import DAG
+from airflow.sdk import DAG
 
 with DAG(
     dag_id="usage_kafka_ingestion",
