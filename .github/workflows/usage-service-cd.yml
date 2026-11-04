@@ -123,7 +123,13 @@ jobs:
             "charts/usage-service/values-${TARGET_ENV}.yaml"
 
           ETL_TAG="${ETL_TAG}" yq -i \
-            '(.airflow.airflow.extraEnv[] | select(.name=="USAGE_ETL_IMAGE_TAG") | .value) = strenv(ETL_TAG)' \
+            '(.airflow.env[] | select(.name=="USAGE_ETL_IMAGE_TAG") | .value) = strenv(ETL_TAG)' \
+            "gitops/infra/airflow/values-${TARGET_ENV}.yaml"
+
+          # Orchestrator image tag for the official Airflow chart (custom
+          # usage-service:airflow-<tag> image), kept in lock-step with the ETL tag.
+          AIRFLOW_IMG_TAG="airflow-${ETL_TAG}" yq -i \
+            '.airflow.images.airflow.tag = strenv(AIRFLOW_IMG_TAG)' \
             "gitops/infra/airflow/values-${TARGET_ENV}.yaml"
 
       - name: Commit and Push

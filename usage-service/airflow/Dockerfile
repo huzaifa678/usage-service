@@ -1,4 +1,6 @@
-FROM apache/airflow:3.3.2-python3.11@sha256:a6685a7a708ed6fa910c2c05458d7f2b0db9cca5c3bf58a72ded389767ad3e65
+# Pinned to Airflow 3.2.2 — the appVersion the official Helm chart 1.22.0 targets.
+# (Verify the digest with: docker buildx imagetools inspect apache/airflow:3.2.2-python3.11)
+FROM apache/airflow:3.2.2-python3.11@sha256:b54a222ee813387065acf3d7abe06a81572be29ddc786ca95f83e35f320d2da9
 
 USER root
 

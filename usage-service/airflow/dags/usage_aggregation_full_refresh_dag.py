@@ -2,7 +2,7 @@ from datetime import datetime
 
 from usage_etl_common import make_pod_task
 
-from airflow import DAG
+from airflow.sdk import DAG
 
 with DAG(
     dag_id="usage_aggregation_full_refresh",

@@ -2,8 +2,8 @@ from datetime import datetime
 
 from usage_etl_common import EMBED_PARALLELISM, make_pod_task
 
-from airflow import DAG
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.sdk import DAG
 
 with DAG(
     dag_id="usage_rag_embedding",
